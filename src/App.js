@@ -9,22 +9,53 @@ function App() {
   const [gameWon, setGameWon] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [highScore, setHighScore] = useState(localStorage.getItem('highScore') || null);
+  const [difficulty, setDifficulty] = useState('easy');
+  const [maxAttempts, setMaxAttempts] = useState(10);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [timerActive, setTimerActive] = useState(false);
+
+  const difficultySettings = {
+    easy: { min: 1, max: 50, maxAttempts: 10, timeLimit: 120, points: 100 },
+    medium: { min: 1, max: 100, maxAttempts: 8, timeLimit: 90, points: 200 },
+    hard: { min: 1, max: 200, maxAttempts: 6, timeLimit: 60, points: 300 },
+    expert: { min: 1, max: 500, maxAttempts: 5, timeLimit: 45, points: 500 }
+  };
+
+  // Timer effect
+  useEffect(() => {
+    let interval = null;
+    if (timerActive && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft(timeLeft - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      setMessage('⏰ Time\'s up! Game Over!');
+      setGameWon(false);
+      setTimerActive(false);
+    }
+    return () => clearInterval(interval);
+  }, [timerActive, timeLeft]);
 
   const generateNewNumber = () => {
-    const newNumber = Math.floor(Math.random() * 100) + 1;
+    const settings = difficultySettings[difficulty];
+    const newNumber = Math.floor(Math.random() * (settings.max - settings.min + 1)) + settings.min;
     setTargetNumber(newNumber);
     setGuess('');
     setMessage('');
     setAttempts(0);
     setGameWon(false);
     setGameStarted(true);
+    setMaxAttempts(settings.maxAttempts);
+    setTimeLeft(settings.timeLimit);
+    setTimerActive(true);
   };
 
   const handleGuess = () => {
     const guessNum = parseInt(guess);
+    const settings = difficultySettings[difficulty];
     
-    if (isNaN(guessNum) || guessNum < 1 || guessNum > 100) {
-      setMessage('Please enter a valid number between 1 and 100!');
+    if (isNaN(guessNum) || guessNum < settings.min || guessNum > settings.max) {
+      setMessage(`Please enter a valid number between ${settings.min} and ${settings.max}!`);
       return;
     }
 
@@ -32,18 +63,28 @@ function App() {
     setAttempts(newAttempts);
 
     if (guessNum === targetNumber) {
-      setMessage(`🎉 Congratulations! You guessed it in ${newAttempts} attempts!`);
+      const points = Math.max(0, settings.points - (newAttempts - 1) * 10);
+      const timeBonus = timeLeft * 2;
+      const totalPoints = points + timeBonus;
+      
+      setMessage(`🎉 Congratulations! You guessed it in ${newAttempts} attempts! 
+                  Points: ${points} + Time Bonus: ${timeBonus} = ${totalPoints} total!`);
       setGameWon(true);
+      setTimerActive(false);
       
       // Update high score
       if (!highScore || newAttempts < highScore) {
         setHighScore(newAttempts);
         localStorage.setItem('highScore', newAttempts);
       }
+    } else if (newAttempts >= maxAttempts) {
+      setMessage(`💀 Game Over! You've used all ${maxAttempts} attempts. The number was ${targetNumber}.`);
+      setGameWon(false);
+      setTimerActive(false);
     } else if (guessNum < targetNumber) {
-      setMessage('📈 Too low! Try a higher number.');
+      setMessage(`📈 Too low! Try a higher number. (${maxAttempts - newAttempts} attempts left)`);
     } else {
-      setMessage('📉 Too high! Try a lower number.');
+      setMessage(`📉 Too high! Try a lower number. (${maxAttempts - newAttempts} attempts left)`);
     }
     
     setGuess('');
@@ -62,11 +103,19 @@ function App() {
     setMessage('');
     setAttempts(0);
     setGameWon(false);
+    setTimerActive(false);
+    setTimeLeft(null);
   };
 
   const resetHighScore = () => {
     setHighScore(null);
     localStorage.removeItem('highScore');
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (!gameStarted) {
@@ -75,8 +124,29 @@ function App() {
         <div className="game-container">
           <h1 className="title">🎯 Number Guessing Game</h1>
           <p className="description">
-            I'm thinking of a number between 1 and 100. Can you guess it?
+            Choose your difficulty and see how quickly you can guess the secret number!
           </p>
+          
+          <div className="difficulty-selector">
+            <h3>Select Difficulty:</h3>
+            <div className="difficulty-options">
+              {Object.entries(difficultySettings).map(([level, settings]) => (
+                <button
+                  key={level}
+                  onClick={() => setDifficulty(level)}
+                  className={`difficulty-btn ${difficulty === level ? 'active' : ''}`}
+                >
+                  <div className="difficulty-name">{level.toUpperCase()}</div>
+                  <div className="difficulty-details">
+                    <span>Range: {settings.min}-{settings.max}</span>
+                    <span>Attempts: {settings.maxAttempts}</span>
+                    <span>Time: {formatTime(settings.timeLimit)}</span>
+                    <span>Points: {settings.points}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
           
           {highScore && (
             <div className="high-score">
@@ -88,7 +158,7 @@ function App() {
           )}
           
           <button onClick={generateNewNumber} className="start-btn">
-            Start New Game
+            Start New Game ({difficulty.toUpperCase()})
           </button>
         </div>
       </div>
@@ -100,8 +170,18 @@ function App() {
       <div className="game-container">
         <h1 className="title">🎯 Number Guessing Game</h1>
         
+        <div className="game-header">
+          <div className="difficulty-badge">
+            {difficulty.toUpperCase()}
+          </div>
+          <div className="timer">
+            ⏱️ {formatTime(timeLeft)}
+          </div>
+        </div>
+        
         <div className="game-info">
-          <p>Attempts: {attempts}</p>
+          <p>Attempts: {attempts}/{maxAttempts}</p>
+          <p>Range: {difficultySettings[difficulty].min}-{difficultySettings[difficulty].max}</p>
           {highScore && <p>Best Score: {highScore} attempts</p>}
         </div>
 
@@ -111,23 +191,23 @@ function App() {
             value={guess}
             onChange={(e) => setGuess(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Enter your guess (1-100)"
+            placeholder={`Enter your guess (${difficultySettings[difficulty].min}-${difficultySettings[difficulty].max})`}
             className="guess-input"
-            disabled={gameWon}
-            min="1"
-            max="100"
+            disabled={gameWon || attempts >= maxAttempts}
+            min={difficultySettings[difficulty].min}
+            max={difficultySettings[difficulty].max}
           />
           <button 
             onClick={handleGuess} 
             className="guess-btn"
-            disabled={gameWon || !guess}
+            disabled={gameWon || !guess || attempts >= maxAttempts}
           >
             Guess!
           </button>
         </div>
 
         {message && (
-          <div className={`message ${gameWon ? 'success' : 'info'}`}>
+          <div className={`message ${gameWon ? 'success' : attempts >= maxAttempts ? 'error' : 'info'}`}>
             {message}
           </div>
         )}
@@ -145,6 +225,10 @@ function App() {
           <div className="celebration">
             <div className="fireworks">🎆</div>
             <p>You're amazing! 🎉</p>
+            <div className="points-display">
+              <span>🏆 Difficulty: {difficulty.toUpperCase()}</span>
+              <span>⚡ Time Bonus: +{timeLeft * 2} points</span>
+            </div>
           </div>
         )}
       </div>
